@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from consumption_predictor.ML_Files.energy_consumption_forecast import forecast_power
 from consumption_predictor.forms import EnergyForecastForm
+from django.http import JsonResponse  # add this at the top with imports
 
 def homepage(request):
     df_predictions = None  # default
@@ -33,6 +34,17 @@ def homepage(request):
             # Example expected output: columns ['minute', 'predicted_power']
             forecast_json = df_predictions.to_json(orient='records')
             print(forecast_json)  # For debugging
+
+            # NEW: if AJAX request, send JSON
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'forecast': df_predictions.to_dict(orient='records')
+                })
+            
+        else:
+            # Handle invalid form for AJAX
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                return JsonResponse({'error': 'Invalid form submission'}, status=400)
     context = {
         'form': form,
         'forecast_json': forecast_json,  # <-- send this for JS

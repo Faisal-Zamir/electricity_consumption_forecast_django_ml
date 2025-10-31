@@ -185,6 +185,8 @@
                 <h3 class="mb-4">Current Energy Data</h3>
                 
                 <form id="forecastForm" method="post">
+                <input type="hidden" id="csrfToken" value="{{ csrf_token }}">
+
                     {% csrf_token %}
                     <!-- Current Power Usage -->
                     <div class="power-input-group">
@@ -243,11 +245,20 @@
                         </div>
                     </div>
                     
+            
+
                     <div class="d-grid mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg" id="forecastBtn">
-                            <i class="fas fa-chart-line me-2"></i>Generate Forecast
-                        </button>
+                    <button type="submit" class="btn btn-primary btn-lg" id="forecastBtn">
+                        <i class="fas fa-bolt me-2"></i>
+                        <span id="btnText">Generate Forecast</span>
+                        <span id="btnSpinner" class="spinner-border spinner-border-sm ms-2" role="status" style="display:none;" aria-hidden="true"></span>
+                    </button>
                     </div>
+
+
+
+
+
                 </form>
             </div>
             
@@ -261,56 +272,18 @@
                         <p class="lead">Enter current energy data to generate power forecast</p>
                     </div>
                 </div>
-                
-                    {% if forecast_json %}
-                    <div id="resultContainer" style="display: block;">
-                    {% else %}
-                    <div id="resultContainer" style="display: none;">
-                    {% endif %}                    
-                    <!-- Current Prediction -->
-                    <div class="result-card">
-                        <h5>Predicted Global Active Power</h5>
-                        <div class="prediction-value">
-                            <span id="predictedPower">0.000</span> <span class="unit">kW</span>
-                        </div>
-                        <p id="predictionTime" class="text-muted">for specific time</p>
-                    </div>
-                    
-                    <!-- Statistics -->
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="stat-card">
-                                <div class="stat-value" id="minPower">0.000</div>
-                                <div class="stat-label">Min Power (kW)</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="stat-card">
-                                <div class="stat-value" id="maxPower">0.000</div>
-                                <div class="stat-label">Max Power (kW)</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="stat-card">
-                                <div class="stat-value" id="avgPower">0.000</div>
-                                <div class="stat-label">Average (kW)</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="stat-card">
-                                <div class="stat-value" id="trend">Stable</div>
-                                <div class="stat-label">Trend</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Chart -->
-                    <div class="chart-container">
-                        <h5 class="text-center">Power Forecast Trend</h5>
-                        <canvas id="forecastChart" height="250"></canvas>
-                    </div>
-                </div>
+            <div id="resultContainer" style="display:none;">
+            <div class="chart-container">
+                <h5 class="text-center">Power Forecast Trend</h5>
+                <canvas id="forecastChart" height="250"></canvas>
             </div>
+        </div>
+               
+            </div>
+
+
+
+
         </div>
     </div>
     
@@ -332,52 +305,85 @@
     <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <!-- Chart.js Library -->
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const forecastData = {{ forecast_json|default:"[]"|safe }};  // ✅ default empty list if None
-    const chartCanvas = document.getElementById("forecastChart");
+    const form = document.getElementById('forecastForm');
+    const btnSpinner = document.getElementById('btnSpinner');
+    const btnText = document.getElementById('btnText');
+    const forecastBtn = document.getElementById('forecastBtn');
+    const resultContainer = document.getElementById('resultContainer');
+    const chartCanvas = document.getElementById('forecastChart');
+    let forecastChart = null;
 
-    if (!forecastData || forecastData.length === 0) {
-        console.log("No forecast data yet.");
-        return;
+    function drawChart(data) {
+        const labels = data.map(d => d.minute_ahead + "m");
+        const values = data.map(d => d.predicted_power_kW);
+
+        if (forecastChart) forecastChart.destroy();
+        const ctx = chartCanvas.getContext("2d");
+        forecastChart = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: "Predicted Power (kW)",
+                    data: values,
+                    borderColor: "#ff6b35",
+                    backgroundColor: "rgba(255, 107, 53, 0.1)",
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { title: { display: true, text: "Minutes Ahead" } },
+                    y: { title: { display: true, text: "Power (kW)" } }
+                }
+            }
+        });
     }
 
-    // ✅ Match keys exactly as in Python JSON
-    const labels = forecastData.map(d => d.minute_ahead + "m");
-    const values = forecastData.map(d => d.predicted_power_kW);
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-    const ctx = chartCanvas.getContext("2d");
+        // 🔄 Show spinner
+        btnSpinner.style.display = 'inline-block';
+        btnText.textContent = 'Generating...';
+        forecastBtn.disabled = true;
 
-    new Chart(ctx, {
-        type: "line",
-        data: {
-            labels: labels,
-            datasets: [{
-                label: "Predicted Power (kW)",
-                data: values,
-                borderColor: "#ff6b35",
-                backgroundColor: "rgba(255, 107, 53, 0.1)",
-                borderWidth: 2,
-                tension: 0.3,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'top' },
-                tooltip: {
-                    callbacks: {
-                        label: ctx => `Power: ${ctx.parsed.y.toFixed(3)} kW`
-                    }
-                }
+        const formData = new FormData(form);
+
+        fetch("{% url 'homepage' %}", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value,
+                "X-Requested-With": "XMLHttpRequest"
             },
-            scales: {
-                x: { title: { display: true, text: "Minutes Ahead" } },
-                y: { title: { display: true, text: "Power (kW)" } }
+            body: formData
+        })
+        .then(resp => resp.json())
+        .then(data => {
+            console.log("Forecast Response:", data);
+
+            if (data.error) {
+                alert(data.error);
+                return;
             }
-        }
+
+            resultContainer.style.display = "block";
+            drawChart(data.forecast);
+        })
+        .catch(err => console.error("Error:", err))
+        .finally(() => {
+            // ✅ Hide spinner after done
+            btnSpinner.style.display = 'none';
+            btnText.textContent = 'Generate Forecast';
+            forecastBtn.disabled = false;
+        });
     });
 });
 </script>
